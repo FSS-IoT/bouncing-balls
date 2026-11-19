@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bouncing Balls — a closed chamber</title>
+<style>
+  :root {
+    --ink: #e9f5ff;
+    --muted: #8da3ba;
+    --accent: #66d9ff;
+    --line: rgba(112, 190, 240, 0.18);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #05070c;
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    overscroll-behavior: none;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: block;
+    cursor: crosshair;
+    touch-action: none;
+    z-index: 0;
+  }
+  #stage.grabbing { cursor: grabbing; }
+  #vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background: radial-gradient(120% 90% at 50% 42%, transparent 42%, rgba(0, 0, 0, 0.58) 100%);
+  }
+  #brand {
+    position: fixed;
+    top: 22px;
+    left: 24px;
+    z-index: 2;
+    pointer-events: none;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
+  }
+  #brand .eyebrow {
+    margin: 0 0 7px;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #brand .eyebrow::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+  }
+  #brand h1 {
+    margin: 0;
+    font-size: clamp(22px, 3vw, 30px);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+  #brand p {
+    margin: 5px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  #stats {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 2;
+    padding: 8px 13px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(8, 14, 23, 0.58);
+    backdrop-filter: blur(10px);
+    color: var(--muted);
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+  }
+  #stats b { color: var(--ink); font-weight: 500; }
+  #stats .sep { opacity: 0.4; margin: 0 6px; }
+  #controls {
+    position: fixed;
+    left: 24px;
+    bottom: 24px;
+    z-index: 2;
+    width: 306px;
+    max-width: calc(100vw - 32px);
+    padding: 15px 16px 13px;
+    border: 1px solid var(--line);
+    border-radius: 15px;
+    background: linear-gradient(180deg, rgba(14, 25, 40, 0.8), rgba(7, 13, 22, 0.88));
+    backdrop-filter: blur(16px);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  .slider-row {
+    display: grid;
+    grid-template-columns: 62px 1fr 44px;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .slider-row label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+  .slider-row output {
+    text-align: right;
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 18px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(102, 217, 255, 0.75), rgba(102, 217, 255, 0.14));
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 13px;
+    height: 13px;
+    margin-top: -5px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: #eafaff;
+    box-shadow: 0 0 12px rgba(102, 217, 255, 0.65);
+  }
+  input[type="range"]::-moz-range-track {
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(102, 217, 255, 0.75), rgba(102, 217, 255, 0.14));
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: #eafaff;
+    box-shadow: 0 0 12px rgba(102, 217, 255, 0.65);
+  }
+  input[type="range"]:focus-visible {
+    outline: 2px solid rgba(102, 217, 255, 0.5);
+    outline-offset: 4px;
+    border-radius: 999px;
+  }
+  .actions {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr 1fr;
+    gap: 7px;
+    margin-top: 13px;
+  }
+  button {
+    appearance: none;
+    padding: 7px 9px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: rgba(102, 217, 255, 0.06);
+    color: var(--ink);
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  }
+  button:hover {
+    background: rgba(102, 217, 255, 0.14);
+    border-color: rgba(102, 217, 255, 0.38);
+  }
+  button:active { transform: translateY(1px); }
+  button:focus-visible {
+    outline: 2px solid rgba(102, 217, 255, 0.55);
+    outline-offset: 2px;
+  }
+  #pause {
+    background: rgba(102, 217, 255, 0.16);
+    border-color: rgba(102, 217, 255, 0.36);
+  }
+  .hint {
+    margin: 11px 0 0;
+    font-size: 10px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  kbd {
+    display: inline-block;
+    padding: 0 4px;
+    border: 1px solid rgba(140, 190, 230, 0.24);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #c9dcee;
+  }
+  #fatal {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: none;
+    place-items: center;
+    padding: 30px;
+    background: #05070c;
+    color: var(--ink);
+    text-align: center;
+    font-size: 14px;
+  }
+  @media (max-width: 660px) {
+    #brand { top: 16px; left: 16px; }
+    #brand p { display: none; }
+    #stats { top: 18px; right: 16px; }
+    #controls {
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      width: auto;
+      padding: 13px 14px 11px;
+    }
+    .slider-row { grid-template-columns: 56px 1fr 42px; }
+  }
+  @media (max-height: 560px) {
+    #brand p, .hint { display: none; }
+    #controls { padding: 11px 13px 10px; }
+    .slider-row { margin-bottom: 6px; }
+  }
+</style>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+</script>
+</head>
+<body>
+<div id="vignette"></div>
+
+<header id="brand">
+  <p class="eyebrow">Closed chamber</p>
+  <h1>Bouncing Balls</h1>
+  <p>Gravity, glass walls, and no way out.</p>
+</header>
+
+<div id="stats">
+  <b id="count">0</b> balls<span class="sep">·</span><b id="fps">60</b> fps
+</div>
+
+<section id="controls" aria-label="Simulation controls">
+  <div class="slider-row">
+    <label for="gravity">Gravity</label>
+    <input id="gravity" type="range" min="0" max="24" step="0.1" value="9.8">
+    <output id="gravity-out" for="gravity">9.8</output>
+  </div>
+  <div class="slider-row">
+    <label for="bounce">Bounce</label>
+    <input id="bounce" type="range" min="0.15" max="1" step="0.01" value="0.82">
+    <output id="bounce-out" for="bounce">0.82</output>
+  </div>
+  <div class="slider-row">
+    <label for="balls">Balls</label>
+    <input id="balls" type="range" min="0" max="260" step="1" value="48">
+    <output id="balls-out" for="balls">48</output>
+  </div>
+  <div class="actions">
+    <button id="pause" type="button" aria-pressed="false">Pause</button>
+    <button id="reset" type="button">Reset</button>
+    <button id="sound" type="button" aria-pressed="true">Sound on</button>
+  </div>
+  <p class="hint">Click to drop · drag to throw · <kbd>Space</kbd> pause · <kbd>R</kbd> reset</p>
+</section>
+
+<div id="fatal"><p>This simulation needs WebGL, which this browser did not provide.</p></div>
+
+<script type="module">
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+const params = new URLSearchParams(location.search);
+const SELFTEST = params.has("selftest");
+
+// ---------------------------------------------------------------------------
+// Physics
+//
+// Spheres only, no spin: gravity is conservative, collisions lose energy
+// through restitution and a little tangential friction. Fixed 120 Hz steps
+// keep fast balls inside the box and make the result independent of frame rate.
+// ---------------------------------------------------------------------------
+
+const BOX = Object.freeze({ hx: 7, hy: 9, hz: 7 });
+const MAX_BALLS = 260;
+const FIXED_STEP = 1 / 120;
+const MAX_SPEED = 40;
+const PALETTE = [
+  0xff6b6b, 0xffd166, 0x5ee0a0, 0x5cc8ff,
+  0xb18cff, 0xff8fd1, 0xffa94d, 0x8be0ff,
+];
+
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function random() {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function createWorld({ count = 48, gravity = 9.8, restitution = 0.82, seed = null } = {}) {
+  const world = {
+    balls: [],
+    gravity,
+    restitution,
+    events: [],
+    time: 0,
+    random: seed == null ? Math.random : mulberry32(seed),
+  };
+  for (let i = 0; i < Math.min(count, MAX_BALLS); i++) spawnBall(world, { upper: true });
+  return world;
+}
+
+function overlapsAny(balls, x, y, z, r, slack = 1.01) {
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    const rr = (b.r + r) * slack;
+    const dx = b.x - x;
+    const dy = b.y - y;
+    const dz = b.z - z;
+    if (dx * dx + dy * dy + dz * dz < rr * rr) return true;
+  }
+  return false;
+}
+
+function spawnBall(world, opts = {}) {
+  if (world.balls.length >= MAX_BALLS) return null;
+  const random = world.random;
+  const r = opts.r ?? 0.32 + random() * 0.32;
+  let x, y, z;
+
+  if (opts.x !== undefined) {
+    x = clamp(opts.x, -BOX.hx + r, BOX.hx - r);
+    z = clamp(opts.z, -BOX.hz + r, BOX.hz - r);
+    y = clamp(opts.y, r, BOX.hy - r);
+  } else {
+    let found = false;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      x = -BOX.hx + r + random() * (2 * (BOX.hx - r));
+      z = -BOX.hz + r + random() * (2 * (BOX.hz - r));
+      y = opts.upper
+        ? BOX.hy * (0.45 + random() * 0.48)
+        : r + random() * (BOX.hy - 2 * r);
+      y = clamp(y, r, BOX.hy - r);
+      if (!overlapsAny(world.balls, x, y, z, r)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      x = clamp(x, -BOX.hx + r, BOX.hx - r);
+      z = clamp(z, -BOX.hz + r, BOX.hz - r);
+      y = clamp(y, r, BOX.hy - r);
+    }
+  }
+
+  const ball = {
+    x, y, z,
+    vx: opts.vx ?? (random() - 0.5) * 3,
+    vy: opts.vy ?? random() * 2,
+    vz: opts.vz ?? (random() - 0.5) * 3,
+    r,
+    color: opts.color ?? Math.floor(random() * PALETTE.length),
+  };
+  world.balls.push(ball);
+  return ball;
+}
+
+function pushEvent(world, x, y, z, speed, nx, ny, nz, color) {
+  if (world.events.length >= 24) return;
+  world.events.push({ x, y, z, speed, nx, ny, nz, color });
+}
+
+function step(world, dt) {
+  const balls = world.balls;
+  const { hx, hy, hz } = BOX;
+  const g = world.gravity;
+  const e = world.restitution;
+  const drag = 1 - 0.02 * dt;
+  const floorGrip = 1 - 0.35 * dt;
+
+  // Integrate.
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    b.vy -= g * dt;
+    b.vx *= drag;
+    b.vy *= drag;
+    b.vz *= drag;
+    const sp2 = b.vx * b.vx + b.vy * b.vy + b.vz * b.vz;
+    if (sp2 > MAX_SPEED * MAX_SPEED) {
+      const scale = MAX_SPEED / Math.sqrt(sp2);
+      b.vx *= scale;
+      b.vy *= scale;
+      b.vz *= scale;
+    }
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.z += b.vz * dt;
+  }
+
+  // Walls and floor. Position constraints cannot tunnel; restitution decides
+  // how much normal speed survives.
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    const minX = -hx + b.r;
+    const maxX = hx - b.r;
+    const minZ = -hz + b.r;
+    const maxZ = hz - b.r;
+
+    if (b.x < minX) {
+      b.x = minX;
+      if (b.vx < 0) {
+        const impact = -b.vx;
+        if (impact > 1.2) pushEvent(world, minX, b.y, b.z, impact, 1, 0, 0, b.color);
+        b.vx = impact * e;
+        b.vy *= 0.995;
+        b.vz *= 0.995;
+      }
+    } else if (b.x > maxX) {
+      b.x = maxX;
+      if (b.vx > 0) {
+        const impact = b.vx;
+        if (impact > 1.2) pushEvent(world, maxX, b.y, b.z, impact, -1, 0, 0, b.color);
+        b.vx = -impact * e;
+        b.vy *= 0.995;
+        b.vz *= 0.995;
+      }
+    }
+
+    if (b.z < minZ) {
+      b.z = minZ;
+      if (b.vz < 0) {
+        const impact = -b.vz;
+        if (impact > 1.2) pushEvent(world, b.x, b.y, minZ, impact, 0, 0, 1, b.color);
+        b.vz = impact * e;
+        b.vx *= 0.995;
+        b.vy *= 0.995;
+      }
+    } else if (b.z > maxZ) {
+      b.z = maxZ;
+      if (b.vz > 0) {
+        const impact = b.vz;
+        if (impact > 1.2) pushEvent(world, b.x, b.y, maxZ, impact, 0, 0, -1, b.color);
+        b.vz = -impact * e;
+        b.vx *= 0.995;
+        b.vy *= 0.995;
+      }
+    }
+
+    if (b.y < b.r) {
+      b.y = b.r;
+      if (b.vy < 0) {
+        const impact = -b.vy;
+        if (impact > 1.2) pushEvent(world, b.x, 0.02, b.z, impact, 0, 1, 0, b.color);
+        // Below this speed a bounce is smaller than the eye can see; letting it
+        // die avoids the endless floor jitter a pure restitution model gives.
+        b.vy = impact > 0.55 ? impact * e : 0;
+        b.vx *= floorGrip;
+        b.vz *= floorGrip;
+      }
+    } else if (b.y > hy - b.r) {
+      b.y = hy - b.r;
+      if (b.vy > 0) {
+        const impact = b.vy;
+        if (impact > 1.2) pushEvent(world, b.x, hy - 0.02, b.z, impact, 0, -1, 0, b.color);
+        b.vy = -impact * e;
+      }
+    }
+  }
+
+  // Sphere-sphere. Equal masses, so the impulse splits evenly; the positional
+  // correction has a small slop so a pile does not buzz.
+  for (let i = 0; i < balls.length; i++) {
+    const a = balls[i];
+    for (let j = i + 1; j < balls.length; j++) {
+      const b = balls[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dz = b.z - a.z;
+      const rr = a.r + b.r;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 >= rr * rr || d2 < 1e-12) continue;
+
+      const d = Math.sqrt(d2);
+      const inv = 1 / d;
+      const nx = dx * inv;
+      const ny = dy * inv;
+      const nz = dz * inv;
+
+      const overlap = rr - d;
+      if (overlap > 0.0015) {
+        const corr = (overlap - 0.0015) * 0.5;
+        a.x -= nx * corr;
+        a.y -= ny * corr;
+        a.z -= nz * corr;
+        b.x += nx * corr;
+        b.y += ny * corr;
+        b.z += nz * corr;
+      }
+
+      const rvx = b.vx - a.vx;
+      const rvy = b.vy - a.vy;
+      const rvz = b.vz - a.vz;
+      const vn = rvx * nx + rvy * ny + rvz * nz;
+      if (vn >= 0) continue;
+
+      const impulse = -(1 + e) * vn * 0.5;
+      a.vx -= nx * impulse;
+      a.vy -= ny * impulse;
+      a.vz -= nz * impulse;
+      b.vx += nx * impulse;
+      b.vy += ny * impulse;
+      b.vz += nz * impulse;
+
+      // A touch of tangential friction so glancing hits do not slide forever.
+      const tvx = rvx - nx * vn;
+      const tvy = rvy - ny * vn;
+      const tvz = rvz - nz * vn;
+      const friction = 0.04;
+      a.vx += tvx * friction;
+      a.vy += tvy * friction;
+      a.vz += tvz * friction;
+      b.vx -= tvx * friction;
+      b.vy -= tvy * friction;
+      b.vz -= tvz * friction;
+
+      if (-vn > 1.4) {
+        pushEvent(
+          world,
+          (a.x + b.x) * 0.5,
+          (a.y + b.y) * 0.5,
+          (a.z + b.z) * 0.5,
+          -vn, nx, ny, nz, a.color
+        );
+      }
+    }
+  }
+
+  // Pair separation can push a ball a hair through a wall. Put it back.
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    b.x = clamp(b.x, -hx + b.r, hx - b.r);
+    b.y = clamp(b.y, b.r, hy - b.r);
+    b.z = clamp(b.z, -hz + b.r, hz - b.r);
+
+    // Horizontal creep on the floor dies out instead of rolling forever.
+    if (b.y < b.r + 0.02) {
+      const speed2 = b.vx * b.vx + b.vy * b.vy + b.vz * b.vz;
+      if (speed2 < 0.0064) {
+        b.vx = 0;
+        b.vz = 0;
+        if (Math.abs(b.vy) < 0.08) b.vy = 0;
+      }
+    }
+  }
+
+  world.time += dt;
+}
+
+// Deterministic, render-free acceptance test. check.mjs calls this; the page
+// also runs it when opened with ?selftest=1.
+function runSelfTest() {
+  const checks = [];
+  const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
+  const world = createWorld({ count: 48, gravity: 9.8, restitution: 0.82, seed: 1337 });
+  const dt = 1 / 120;
+
+  const energy = (w) => {
+    let total = 0;
+    for (const b of w.balls) {
+      total += 0.5 * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);
+      total += w.gravity * (b.y - b.r);
+    }
+    return total;
+  };
+
+  const energy0 = energy(world);
+  let energy5 = energy0;
+  for (let i = 0; i < 1800; i++) {
+    step(world, dt);
+    if (i === 599) energy5 = energy(world);
+  }
+  const energy15 = energy(world);
+
+  check("48 balls spawned", world.balls.length === 48, `${world.balls.length}`);
+
+  let finite = true;
+  let contained = true;
+  let minY = Infinity;
+  for (const b of world.balls) {
+    if (!Number.isFinite(b.x + b.y + b.z + b.vx + b.vy + b.vz + b.r)) finite = false;
+    if (
+      b.x < -BOX.hx + b.r - 1e-6 || b.x > BOX.hx - b.r + 1e-6 ||
+      b.y < b.r - 1e-6 || b.y > BOX.hy - b.r + 1e-6 ||
+      b.z < -BOX.hz + b.r - 1e-6 || b.z > BOX.hz - b.r + 1e-6
+    ) contained = false;
+    minY = Math.min(minY, b.y - b.r);
+  }
+  check("positions and velocities are finite", finite);
+  check("all balls remain inside the box", contained, `lowest point ${minY.toFixed(4)}`);
+
+  check(
+    "energy did not increase (0 → 5 s)",
+    energy5 <= energy0 * 1.02 + 1,
+    `${energy0.toFixed(1)} → ${energy5.toFixed(1)}`
+  );
+  check(
+    "energy did not increase (5 → 15 s)",
+    energy15 <= energy5 * 1.02 + 1,
+    `${energy5.toFixed(1)} → ${energy15.toFixed(1)}`
+  );
+  check(
+    "energy was dissipated by the end",
+    energy15 < energy0 * 0.9,
+    `${energy0.toFixed(1)} → ${energy15.toFixed(1)}`
+  );
+
+  let sumSpeed = 0;
+  let maxSpeed = 0;
+  for (const b of world.balls) {
+    const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);
+    sumSpeed += speed;
+    maxSpeed = Math.max(maxSpeed, speed);
+  }
+  const avgSpeed = sumSpeed / Math.max(1, world.balls.length);
+  check("the pile settles", avgSpeed < 3 && maxSpeed < 12, `avg ${avgSpeed.toFixed(2)}, max ${maxSpeed.toFixed(2)}`);
+
+  let maxOverlap = 0;
+  for (let i = 0; i < world.balls.length; i++) {
+    for (let j = i + 1; j < world.balls.length; j++) {
+      const a = world.balls[i];
+      const b = world.balls[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dz = b.z - a.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      maxOverlap = Math.max(maxOverlap, a.r + b.r - d);
+    }
+  }
+  check("balls are not overlapping", maxOverlap < 0.05, `worst ${maxOverlap.toFixed(4)}`);
+  check("collision events were produced", world.events.length > 0, `${world.events.length} events`);
+
+  return {
+    pass: checks.every((c) => c.pass),
+    checks,
+    stats: { balls: world.balls.length, energy0, energy5, energy15, avgSpeed, maxOverlap },
+  };
+}
+
+window.__selftest = runSelfTest;
+
+// ---------------------------------------------------------------------------
+// Renderer and scene
+// ---------------------------------------------------------------------------
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+} catch (error) {
+  document.getElementById("fatal").style.display = "grid";
+  throw error;
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.domElement.id = "stage";
+document.body.prepend(renderer.domElement);
+
+function makeSkyTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 4;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+  gradient.addColorStop(0, "#0b1624");
+  gradient.addColorStop(0.5, "#060b13");
+  gradient.addColorStop(1, "#020409");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 4, 512);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+const scene = new THREE.Scene();
+scene.background = makeSkyTexture();
+scene.fog = new THREE.FogExp2(0x05070c, 0.018);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 120);
+const camTarget = new THREE.Vector3(0, 3.6, 0);
+const CAM_RADIUS = 22;
+
+const ambient = new THREE.AmbientLight(0x2a3b50, 1.15);
+scene.add(ambient);
+
+const hemi = new THREE.HemisphereLight(0xa8d8ff, 0x080a10, 1.3);
+scene.add(hemi);
+
+const key = new THREE.DirectionalLight(0xfff1de, 3.1);
+key.position.set(7, 16, 9);
+key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+key.shadow.camera.left = -12;
+key.shadow.camera.right = 12;
+key.shadow.camera.top = 14;
+key.shadow.camera.bottom = -2;
+key.shadow.camera.near = 1;
+key.shadow.camera.far = 42;
+key.shadow.bias = -0.0004;
+key.shadow.normalBias = 0.02;
+scene.add(key);
+
+const rim = new THREE.PointLight(0x3f9dff, 75, 45, 2);
+rim.position.set(8, 7, -9);
+scene.add(rim);
+
+const warm = new THREE.PointLight(0xff8455, 55, 38, 2);
+warm.position.set(-9, 4.5, 7);
+scene.add(warm);
+
+function makeFloorTexture() {
+  const size = 1024;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const gradient = ctx.createRadialGradient(
+    size / 2, size / 2, size * 0.04,
+    size / 2, size / 2, size * 0.65
+  );
+  gradient.addColorStop(0, "#213c54");
+  gradient.addColorStop(0.6, "#0e1c2a");
+  gradient.addColorStop(1, "#070d15");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.strokeStyle = "rgba(92, 186, 238, 0.19)";
+  ctx.lineWidth = 1;
+  const step = size / 16;
+  for (let i = 0; i <= 16; i++) {
+    const p = Math.min(size - 0.5, i * step + 0.5);
+    ctx.beginPath();
+    ctx.moveTo(p, 0);
+    ctx.lineTo(p, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, p);
+    ctx.lineTo(size, p);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(102, 217, 255, 0.3)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, size - 2, size - 2);
+
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return texture;
+}
+
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(BOX.hx * 2, BOX.hz * 2),
+  new THREE.MeshStandardMaterial({ map: makeFloorTexture(), roughness: 0.55, metalness: 0.18 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = 0.002;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const boxGeometry = new THREE.BoxGeometry(BOX.hx * 2, BOX.hy, BOX.hz * 2);
+
+// Basic rather than physical: punctual lights gave this pane two bright
+// specular orbs that read as stray balls. The edge lines carry the volume.
+const glass = new THREE.Mesh(
+  boxGeometry,
+  new THREE.MeshBasicMaterial({
+    color: 0x8ed6ff,
+    transparent: true,
+    opacity: 0.022,
+    side: THREE.BackSide,
+    depthWrite: false,
+  })
+);
+glass.position.y = BOX.hy / 2;
+scene.add(glass);
+
+const edges = new THREE.LineSegments(
+  new THREE.EdgesGeometry(boxGeometry),
+  new THREE.LineBasicMaterial({
+    color: 0x7fdcff,
+    transparent: true,
+    opacity: 0.42,
+    blending: THREE.AdditiveBlending,
+  })
+);
+edges.position.y = BOX.hy / 2;
+scene.add(edges);
+
+// ---------------------------------------------------------------------------
+// Balls: one instanced sphere mesh plus a slightly larger additive shell for
+// the colored halo. Both draw from the same physics array.
+// ---------------------------------------------------------------------------
+
+const sphereGeometry = new THREE.SphereGeometry(1, 28, 20);
+
+const ballsMesh = new THREE.InstancedMesh(
+  sphereGeometry,
+  new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    roughness: 0.2,
+    metalness: 0.03,
+    clearcoat: 1,
+    clearcoatRoughness: 0.12,
+  }),
+  MAX_BALLS
+);
+ballsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+ballsMesh.castShadow = true;
+ballsMesh.receiveShadow = true;
+ballsMesh.frustumCulled = false;
+ballsMesh.count = 0;
+scene.add(ballsMesh);
+
+const glowMesh = new THREE.InstancedMesh(
+  sphereGeometry,
+  new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.17,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.BackSide,
+  }),
+  MAX_BALLS
+);
+glowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+glowMesh.frustumCulled = false;
+glowMesh.count = 0;
+scene.add(glowMesh);
+
+const world = createWorld({ count: 48, gravity: 9.8, restitution: 0.82 });
+
+const dummy = new THREE.Object3D();
+const tempColor = new THREE.Color();
+
+function syncBalls() {
+  const n = world.balls.length;
+  ballsMesh.count = n;
+  glowMesh.count = n;
+  for (let i = 0; i < n; i++) {
+    const b = world.balls[i];
+    dummy.position.set(b.x, b.y, b.z);
+    dummy.scale.setScalar(b.r);
+    dummy.updateMatrix();
+    ballsMesh.setMatrixAt(i, dummy.matrix);
+    dummy.scale.setScalar(b.r * 1.16);
+    dummy.updateMatrix();
+    glowMesh.setMatrixAt(i, dummy.matrix);
+  }
+  ballsMesh.instanceMatrix.needsUpdate = true;
+  glowMesh.instanceMatrix.needsUpdate = true;
+}
+
+function syncColors() {
+  const n = world.balls.length;
+  for (let i = 0; i < n; i++) {
+    tempColor.setHex(PALETTE[world.balls[i].color % PALETTE.length]);
+    ballsMesh.setColorAt(i, tempColor);
+    glowMesh.setColorAt(i, tempColor);
+  }
+  if (ballsMesh.instanceColor) ballsMesh.instanceColor.needsUpdate = true;
+  if (glowMesh.instanceColor) glowMesh.instanceColor.needsUpdate = true;
+}
+
+// ---------------------------------------------------------------------------
+// Impact sparks
+// ---------------------------------------------------------------------------
+
+const PARTICLE_COUNT = 480;
+const sparkPositions = new Float32Array(PARTICLE_COUNT * 3);
+const sparkColors = new Float32Array(PARTICLE_COUNT * 3);
+const sparkVel = new Float32Array(PARTICLE_COUNT * 3);
+const sparkBase = new Float32Array(PARTICLE_COUNT * 3);
+const sparkLife = new Float32Array(PARTICLE_COUNT);
+const sparkMaxLife = new Float32Array(PARTICLE_COUNT);
+for (let i = 0; i < PARTICLE_COUNT; i++) sparkPositions[i * 3 + 1] = -999;
+
+const sparkGeometry = new THREE.BufferGeometry();
+sparkGeometry.setAttribute(
+  "position",
+  new THREE.BufferAttribute(sparkPositions, 3).setUsage(THREE.DynamicDrawUsage)
+);
+sparkGeometry.setAttribute(
+  "color",
+  new THREE.BufferAttribute(sparkColors, 3).setUsage(THREE.DynamicDrawUsage)
+);
+const sparks = new THREE.Points(
+  sparkGeometry,
+  new THREE.PointsMaterial({
+    size: 0.075,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  })
+);
+sparks.frustumCulled = false;
+scene.add(sparks);
+
+let sparkCursor = 0;
+const sparkColor = new THREE.Color();
+
+function spawnSparks(event, count) {
+  sparkColor.setHex(PALETTE[event.color % PALETTE.length]);
+  for (let k = 0; k < count; k++) {
+    const i = sparkCursor;
+    sparkCursor = (sparkCursor + 1) % PARTICLE_COUNT;
+    const idx = i * 3;
+
+    let dx = (Math.random() - 0.5) * 2;
+    let dy = (Math.random() - 0.5) * 2;
+    let dz = (Math.random() - 0.5) * 2;
+    const length = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    dx /= length;
+    dy /= length;
+    dz /= length;
+
+    const speed = 0.7 + Math.random() * 2.1;
+    sparkPositions[idx] = event.x;
+    sparkPositions[idx + 1] = event.y;
+    sparkPositions[idx + 2] = event.z;
+    sparkVel[idx] = dx * speed + event.nx * 0.9;
+    sparkVel[idx + 1] = dy * speed + event.ny * 0.9;
+    sparkVel[idx + 2] = dz * speed + event.nz * 0.9;
+
+    sparkBase[idx] = sparkColor.r;
+    sparkBase[idx + 1] = sparkColor.g;
+    sparkBase[idx + 2] = sparkColor.b;
+    sparkColors[idx] = sparkColor.r;
+    sparkColors[idx + 1] = sparkColor.g;
+    sparkColors[idx + 2] = sparkColor.b;
+
+    const life = 0.28 + Math.random() * 0.42;
+    sparkLife[i] = life;
+    sparkMaxLife[i] = life;
+  }
+}
+
+function updateSparks(dt) {
+  let touched = false;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    if (sparkLife[i] <= 0) continue;
+    touched = true;
+    sparkLife[i] -= dt;
+    const idx = i * 3;
+    if (sparkLife[i] <= 0) {
+      sparkColors[idx] = 0;
+      sparkColors[idx + 1] = 0;
+      sparkColors[idx + 2] = 0;
+      sparkPositions[idx + 1] = -999;
+      continue;
+    }
+    sparkVel[idx + 1] -= 4.5 * dt;
+    sparkPositions[idx] += sparkVel[idx] * dt;
+    sparkPositions[idx + 1] += sparkVel[idx + 1] * dt;
+    sparkPositions[idx + 2] += sparkVel[idx + 2] * dt;
+    const fade = sparkLife[i] / sparkMaxLife[i];
+    const fade2 = fade * fade;
+    sparkColors[idx] = sparkBase[idx] * fade2;
+    sparkColors[idx + 1] = sparkBase[idx + 1] * fade2;
+    sparkColors[idx + 2] = sparkBase[idx + 2] * fade2;
+  }
+  if (touched) {
+    sparkGeometry.attributes.position.needsUpdate = true;
+    sparkGeometry.attributes.color.needsUpdate = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sound: tiny synthesized clicks, started only after the first gesture.
+// ---------------------------------------------------------------------------
+
+let audioCtx = null;
+let soundOn = true;
+let lastSoundAt = 0;
+
+function ensureAudio() {
+  if (!audioCtx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      audioCtx = new Ctx();
+      const master = audioCtx.createGain();
+      master.gain.value = 0.55;
+      master.connect(audioCtx.destination);
+      audioCtx.__master = master;
+    } catch {
+      audioCtx = null;
+      return;
+    }
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function playImpact(event) {
+  if (!soundOn || !audioCtx || event.speed < 2) return;
+  const now = audioCtx.currentTime;
+  if (now - lastSoundAt < 0.035) return;
+  lastSoundAt = now;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const frequency = 170 + Math.random() * 260;
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(frequency, now);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(60, frequency * 0.45), now + 0.09);
+
+  const volume = Math.min(0.055, 0.004 + event.speed * 0.0034);
+  gain.gain.setValueAtTime(volume, now);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+  osc.connect(gain);
+  if (audioCtx.createStereoPanner) {
+    const pan = audioCtx.createStereoPanner();
+    pan.pan.value = clamp(event.x / BOX.hx, -1, 1);
+    gain.connect(pan);
+    pan.connect(audioCtx.__master);
+  } else {
+    gain.connect(audioCtx.__master);
+  }
+  osc.start(now);
+  osc.stop(now + 0.16);
+}
+
+function drainEvents() {
+  if (!world.events.length) return;
+  let strongest = null;
+  for (const event of world.events) {
+    if (!strongest || event.speed > strongest.speed) strongest = event;
+    if (event.speed > 1.6) {
+      spawnSparks(event, Math.min(9, 2 + Math.floor(event.speed * 0.6)));
+    }
+  }
+  world.events.length = 0;
+  if (strongest) playImpact(strongest);
+}
+
+// ---------------------------------------------------------------------------
+// Camera
+// ---------------------------------------------------------------------------
+
+let pointerNX = 0;
+let pointerNY = 0;
+let smoothNX = 0;
+let smoothNY = 0;
+
+function updateCamera(dt) {
+  smoothNX += (pointerNX - smoothNX) * (1 - Math.exp(-2.2 * dt));
+  smoothNY += (pointerNY - smoothNY) * (1 - Math.exp(-2.2 * dt));
+
+  // A portrait phone has a much narrower horizontal view; pulling the camera
+  // back keeps the chamber whole instead of cropping its side walls.
+  const aspect = innerWidth / innerHeight;
+  const viewScale = Math.min(1.7, Math.max(1, 1.15 / aspect));
+  const radius = CAM_RADIUS * viewScale;
+  const yaw = 0.64 + Math.sin(elapsed * 0.06) * 0.045 + smoothNX * 0.045;
+  const height =
+    camTarget.y +
+    (6.8 + Math.sin(elapsed * 0.09) * 0.15 - smoothNY * 0.35) * viewScale;
+  camera.position.set(Math.sin(yaw) * radius, height, Math.cos(yaw) * radius);
+  camera.lookAt(camTarget);
+}
+
+// ---------------------------------------------------------------------------
+// Post-processing
+// ---------------------------------------------------------------------------
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.5,
+  0.5,
+  0.72
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ---------------------------------------------------------------------------
+// Throwing
+// ---------------------------------------------------------------------------
+
+const stage = renderer.domElement;
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const throwPlane = new THREE.Plane();
+const planeNormal = new THREE.Vector3();
+const planeHitPoint = new THREE.Vector3();
+const drag = {
+  active: false,
+  pointerId: -1,
+  start: new THREE.Vector3(),
+  current: new THREE.Vector3(),
+  r: 0.4,
+};
+
+const ghost = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 18, 12),
+  new THREE.MeshBasicMaterial({
+    color: 0x9fe8ff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.5,
+  })
+);
+ghost.visible = false;
+scene.add(ghost);
+
+const TRAJECTORY_POINTS = 40;
+const trajectoryPositions = new Float32Array(TRAJECTORY_POINTS * 3);
+const trajectoryGeometry = new THREE.BufferGeometry();
+trajectoryGeometry.setAttribute(
+  "position",
+  new THREE.BufferAttribute(trajectoryPositions, 3).setUsage(THREE.DynamicDrawUsage)
+);
+const trajectory = new THREE.Line(
+  trajectoryGeometry,
+  new THREE.LineBasicMaterial({
+    color: 0x9fe8ff,
+    transparent: true,
+    opacity: 0.75,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+);
+trajectory.frustumCulled = false;
+trajectory.visible = false;
+scene.add(trajectory);
+
+const trajectoryEnd = new THREE.Mesh(
+  new THREE.SphereGeometry(0.09, 10, 8),
+  new THREE.MeshBasicMaterial({
+    color: 0xbdf2ff,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+);
+trajectoryEnd.visible = false;
+scene.add(trajectoryEnd);
+
+const THROW_SCALE = 3.4;
+const MAX_THROW_SPEED = 26;
+
+function clampInto(point, radius) {
+  point.x = clamp(point.x, -BOX.hx + radius, BOX.hx - radius);
+  point.y = clamp(point.y, radius, BOX.hy - radius);
+  point.z = clamp(point.z, -BOX.hz + radius, BOX.hz - radius);
+  return point;
+}
+
+function hitPlane(event) {
+  camera.updateMatrixWorld();
+  const rect = stage.getBoundingClientRect();
+  ndc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  ndc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  camera.getWorldDirection(planeNormal).negate();
+  throwPlane.setFromNormalAndCoplanarPoint(planeNormal, camTarget);
+  const hit = raycaster.ray.intersectPlane(throwPlane, planeHitPoint);
+  return hit ? planeHitPoint : null;
+}
+
+function aimVelocity() {
+  const dx = drag.current.x - drag.start.x;
+  const dy = drag.current.y - drag.start.y;
+  const dz = drag.current.z - drag.start.z;
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (distance <= 0.12) return null;
+
+  let vx = dx * THROW_SCALE;
+  let vy = dy * THROW_SCALE;
+  let vz = dz * THROW_SCALE;
+  const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+  if (speed > MAX_THROW_SPEED) {
+    const shrink = MAX_THROW_SPEED / speed;
+    vx *= shrink;
+    vy *= shrink;
+    vz *= shrink;
+  }
+  return { vx, vy, vz };
+}
+
+function updateTrajectory() {
+  const aim = aimVelocity();
+  if (!aim) {
+    trajectory.visible = false;
+    trajectoryEnd.visible = false;
+    return;
+  }
+
+  const dt = 0.035;
+  let x = drag.start.x;
+  let y = drag.start.y;
+  let z = drag.start.z;
+  let vx = aim.vx;
+  let vy = aim.vy;
+  let vz = aim.vz;
+  let count = 0;
+
+  for (let i = 0; i < TRAJECTORY_POINTS; i++) {
+    trajectoryPositions[i * 3] = x;
+    trajectoryPositions[i * 3 + 1] = y;
+    trajectoryPositions[i * 3 + 2] = z;
+    count++;
+
+    vy -= world.gravity * dt;
+    x += vx * dt;
+    y += vy * dt;
+    z += vz * dt;
+    if (
+      y < 0 || y > BOX.hy ||
+      x < -BOX.hx || x > BOX.hx ||
+      z < -BOX.hz || z > BOX.hz
+    ) break;
+  }
+
+  trajectoryGeometry.setDrawRange(0, count);
+  trajectoryGeometry.attributes.position.needsUpdate = true;
+  trajectory.visible = true;
+  trajectoryEnd.visible = true;
+  trajectoryEnd.position.set(
+    trajectoryPositions[(count - 1) * 3],
+    trajectoryPositions[(count - 1) * 3 + 1],
+    trajectoryPositions[(count - 1) * 3 + 2]
+  );
+}
+
+function beginDrag(event) {
+  if (event.button !== 0 || drag.active) return;
+  const hit = hitPlane(event);
+  if (!hit) return;
+  ensureAudio();
+  drag.active = true;
+  drag.pointerId = event.pointerId;
+  drag.r = 0.34 + Math.random() * 0.22;
+  drag.start.copy(hit);
+  drag.current.copy(hit);
+  clampInto(drag.start, drag.r + 0.02);
+  clampInto(drag.current, drag.r + 0.02);
+  ghost.visible = true;
+  ghost.position.copy(drag.start);
+  ghost.scale.setScalar(drag.r);
+  trajectory.visible = false;
+  trajectoryEnd.visible = false;
+  stage.classList.add("grabbing");
+  if (stage.setPointerCapture) stage.setPointerCapture(event.pointerId);
+}
+
+function moveDrag(event) {
+  if (!drag.active || event.pointerId !== drag.pointerId) return;
+  const hit = hitPlane(event);
+  if (!hit) return;
+  drag.current.copy(hit);
+  clampInto(drag.current, drag.r + 0.02);
+  updateTrajectory();
+}
+
+function endDrag(event) {
+  if (!drag.active) return;
+  if (event && event.pointerId !== drag.pointerId) return;
+
+  const aim = aimVelocity();
+  const vx = aim ? aim.vx : (Math.random() - 0.5) * 1.4;
+  const vy = aim ? aim.vy : -0.4;
+  const vz = aim ? aim.vz : (Math.random() - 0.5) * 1.4;
+
+  if (spawnBall(world, {
+    x: drag.start.x,
+    y: drag.start.y,
+    z: drag.start.z,
+    r: drag.r,
+    vx, vy, vz,
+  })) {
+    syncColors();
+    syncCountUI();
+  }
+  finishDrag();
+}
+
+function finishDrag() {
+  if (!drag.active) return;
+  drag.active = false;
+  ghost.visible = false;
+  trajectory.visible = false;
+  trajectoryEnd.visible = false;
+  stage.classList.remove("grabbing");
+  if (stage.hasPointerCapture && stage.hasPointerCapture(drag.pointerId)) {
+    stage.releasePointerCapture(drag.pointerId);
+  }
+  drag.pointerId = -1;
+}
+
+stage.addEventListener("pointerdown", beginDrag);
+stage.addEventListener("pointermove", moveDrag);
+stage.addEventListener("pointerup", endDrag);
+stage.addEventListener("pointercancel", finishDrag);
+window.addEventListener("pointermove", (event) => {
+  if (drag.active) return;
+  pointerNX = (event.clientX / innerWidth) * 2 - 1;
+  pointerNY = (event.clientY / innerHeight) * 2 - 1;
+});
+window.addEventListener("blur", finishDrag);
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+
+const gravityInput = document.getElementById("gravity");
+const gravityOut = document.getElementById("gravity-out");
+const bounceInput = document.getElementById("bounce");
+const bounceOut = document.getElementById("bounce-out");
+const ballsInput = document.getElementById("balls");
+const ballsOut = document.getElementById("balls-out");
+const countEl = document.getElementById("count");
+const fpsEl = document.getElementById("fps");
+const pauseBtn = document.getElementById("pause");
+const resetBtn = document.getElementById("reset");
+const soundBtn = document.getElementById("sound");
+
+let paused = false;
+let accumulator = 0;
+let elapsed = 0;
+let hudTimer = 0;
+let hudFrames = 0;
+
+function syncCountUI() {
+  countEl.textContent = world.balls.length;
+  ballsInput.value = String(world.balls.length);
+  ballsOut.textContent = String(world.balls.length);
+}
+
+function setPaused(value) {
+  paused = value;
+  pauseBtn.textContent = paused ? "Play" : "Pause";
+  pauseBtn.setAttribute("aria-pressed", String(paused));
+}
+
+function setBallCount(target) {
+  const n = clamp(Math.round(target), 0, MAX_BALLS);
+  while (world.balls.length > n) world.balls.pop();
+  let guard = 0;
+  while (world.balls.length < n && guard++ < n + 4) {
+    if (!spawnBall(world)) break;
+  }
+  syncColors();
+  syncCountUI();
+}
+
+function resetWorld() {
+  world.balls.length = 0;
+  world.events.length = 0;
+  const n = clamp(Math.round(Number(ballsInput.value)), 0, MAX_BALLS);
+  for (let i = 0; i < n; i++) spawnBall(world, { upper: true });
+  accumulator = 0;
+  syncColors();
+  syncCountUI();
+}
+
+gravityInput.addEventListener("input", () => {
+  world.gravity = Number(gravityInput.value);
+  gravityOut.textContent = world.gravity.toFixed(1);
+});
+
+bounceInput.addEventListener("input", () => {
+  world.restitution = Number(bounceInput.value);
+  bounceOut.textContent = world.restitution.toFixed(2);
+});
+
+ballsInput.addEventListener("input", () => {
+  setBallCount(Number(ballsInput.value));
+});
+
+pauseBtn.addEventListener("click", () => {
+  setPaused(!paused);
+  pauseBtn.blur();
+});
+
+resetBtn.addEventListener("click", () => {
+  resetWorld();
+  resetBtn.blur();
+});
+
+soundBtn.addEventListener("click", () => {
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? "Sound on" : "Sound off";
+  soundBtn.setAttribute("aria-pressed", String(soundOn));
+  ensureAudio();
+  soundBtn.blur();
+});
+
+addEventListener("keydown", (event) => {
+  if (event.target && event.target.tagName === "INPUT") return;
+  if (event.code === "Space") {
+    event.preventDefault();
+    setPaused(!paused);
+  } else if (event.code === "KeyR") {
+    event.preventDefault();
+    resetWorld();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Loop
+// ---------------------------------------------------------------------------
+
+function updateHud(dt) {
+  hudFrames++;
+  hudTimer += dt;
+  if (hudTimer >= 0.5) {
+    fpsEl.textContent = String(Math.round(hudFrames / hudTimer));
+    countEl.textContent = String(world.balls.length);
+    hudFrames = 0;
+    hudTimer = 0;
+  }
+}
+
+const clock = new THREE.Clock();
+
+function frame() {
+  const dt = Math.min(clock.getDelta(), 1 / 30);
+  elapsed += dt;
+
+  if (!paused) {
+    accumulator += dt;
+    let iterations = 0;
+    while (accumulator >= FIXED_STEP && iterations < 10) {
+      step(world, FIXED_STEP);
+      accumulator -= FIXED_STEP;
+      iterations++;
+    }
+    if (accumulator > FIXED_STEP * 10) accumulator = 0;
+    drainEvents();
+  }
+
+  updateSparks(dt);
+  syncBalls();
+  updateCamera(dt);
+  updateHud(dt);
+  composer.render();
+}
+
+syncColors();
+syncBalls();
+syncCountUI();
+setPaused(false);
+updateCamera(0);
+renderer.setAnimationLoop(frame);
+window.__simReady = true;
+window.__debug = {
+  world, camera, BOX, renderer,
+  project(x, y, z) {
+    const point = new THREE.Vector3(x, y, z).project(camera);
+    return {
+      x: ((point.x + 1) / 2) * innerWidth,
+      y: ((1 - point.y) / 2) * innerHeight,
+      z: point.z,
+    };
+  },
+};
+
+if (SELFTEST) {
+  const result = runSelfTest();
+  window.__selftestResult = result;
+  if (!result.pass) console.error("SELFTEST FAIL", result);
+}
+</script>
+</body>
+</html>
