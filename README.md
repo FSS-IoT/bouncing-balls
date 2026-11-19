@@ -63,8 +63,9 @@ omarchy agent look page index.html --size 390x844 --after 2500
 
 ## Notes
 
-- The camera pans out on portrait screens (`1.15 / aspect`, capped at 1.7) so
-  the side walls stay in frame.
+- The camera pans out on portrait screens (`1.15 / aspect`, capped at 2.6) so
+  the side walls stay in frame. The cap clears the 2.49 the formula asks for at
+  390×844.
 - The aim arc integrates gravity only; it deliberately ignores collisions.
 - The glass box is a `MeshBasicMaterial` at 0.022 opacity. A physical material
   turned point-light speculars into two bright orbs that read as stray balls.

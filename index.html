@@ -91,7 +91,8 @@
     letter-spacing: 0.02em;
     pointer-events: none;
   }
-  #stats b { color: var(--ink); font-weight: 500; }
+  #stats b { color: var(--ink); font-weight: 500; transition: color 160ms ease; }
+  #stats b.limit { color: #ff9b9b; }
   #stats .sep { opacity: 0.4; margin: 0 6px; }
   #controls {
     position: fixed;
@@ -284,14 +285,30 @@
     <output id="balls-out" for="balls">48</output>
   </div>
   <div class="actions">
-    <button id="pause" type="button" aria-pressed="false">Pause</button>
+    <button id="pause" type="button">Pause</button>
     <button id="reset" type="button">Reset</button>
     <button id="sound" type="button" aria-pressed="true">Sound on</button>
   </div>
   <p class="hint">Click to drop · drag to throw · <kbd>Space</kbd> pause · <kbd>R</kbd> reset</p>
 </section>
 
-<div id="fatal"><p>This simulation needs WebGL, which this browser did not provide.</p></div>
+<div id="fatal" role="alert" tabindex="-1"><p>This simulation needs WebGL, which this browser did not provide.</p></div>
+
+<script>
+  // A module import failure never reaches window.onerror reliably. If the page
+  // has not finished booting after eight seconds, put the failure on screen
+  // instead of leaving live-looking controls over a dead canvas.
+  window.setTimeout(function () {
+    if (window.__simReady || window.__simFailed) return;
+    var panel = document.getElementById("fatal");
+    panel.querySelector("p").textContent =
+      "The simulation could not start. It loads three.js from a CDN; check the network connection and reload.";
+    document.getElementById("controls").hidden = true;
+    document.getElementById("stats").hidden = true;
+    panel.style.display = "grid";
+    panel.focus();
+  }, 8000);
+</script>
 
 <script type="module">
 import * as THREE from "three";
@@ -338,6 +355,7 @@ function createWorld({ count = 48, gravity = 9.8, restitution = 0.82, seed = nul
     gravity,
     restitution,
     events: [],
+    eventCount: 0,
     time: 0,
     random: seed == null ? Math.random : mulberry32(seed),
   };
@@ -401,6 +419,7 @@ function spawnBall(world, opts = {}) {
 }
 
 function pushEvent(world, x, y, z, speed, nx, ny, nz, color) {
+  world.eventCount++;
   if (world.events.length >= 24) return;
   world.events.push({ x, y, z, speed, nx, ny, nz, color });
 }
@@ -645,7 +664,7 @@ function runSelfTest() {
   );
   check(
     "energy was dissipated by the end",
-    energy15 < energy0 * 0.9,
+    energy15 < energy0 * 0.02,
     `${energy0.toFixed(1)} → ${energy15.toFixed(1)}`
   );
 
@@ -657,7 +676,7 @@ function runSelfTest() {
     maxSpeed = Math.max(maxSpeed, speed);
   }
   const avgSpeed = sumSpeed / Math.max(1, world.balls.length);
-  check("the pile settles", avgSpeed < 3 && maxSpeed < 12, `avg ${avgSpeed.toFixed(2)}, max ${maxSpeed.toFixed(2)}`);
+  check("the pile settles", avgSpeed < 0.5 && maxSpeed < 2, `avg ${avgSpeed.toFixed(2)}, max ${maxSpeed.toFixed(2)}`);
 
   let maxOverlap = 0;
   for (let i = 0; i < world.balls.length; i++) {
@@ -671,8 +690,8 @@ function runSelfTest() {
       maxOverlap = Math.max(maxOverlap, a.r + b.r - d);
     }
   }
-  check("balls are not overlapping", maxOverlap < 0.05, `worst ${maxOverlap.toFixed(4)}`);
-  check("collision events were produced", world.events.length > 0, `${world.events.length} events`);
+  check("balls are not overlapping", maxOverlap < 0.01, `worst ${maxOverlap.toFixed(4)}`);
+  check("collision events were produced", world.eventCount > 100, `${world.eventCount} events`);
 
   return {
     pass: checks.every((c) => c.pass),
@@ -687,11 +706,21 @@ window.__selftest = runSelfTest;
 // Renderer and scene
 // ---------------------------------------------------------------------------
 
+function showFatal(message) {
+  const panel = document.getElementById("fatal");
+  panel.querySelector("p").textContent = message;
+  document.getElementById("controls").hidden = true;
+  document.getElementById("stats").hidden = true;
+  panel.style.display = "grid";
+  panel.focus();
+  window.__simFailed = true;
+}
+
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 } catch (error) {
-  document.getElementById("fatal").style.display = "grid";
+  showFatal("This simulation needs WebGL, which this browser did not provide.");
   throw error;
 }
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -702,6 +731,12 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.domElement.id = "stage";
 document.body.prepend(renderer.domElement);
+
+renderer.domElement.addEventListener("webglcontextlost", (event) => {
+  event.preventDefault();
+  renderer.setAnimationLoop(null);
+  showFatal("The graphics context was lost. Reload to restart the simulation.");
+});
 
 function makeSkyTexture() {
   const canvas = document.createElement("canvas");
@@ -726,6 +761,9 @@ scene.fog = new THREE.FogExp2(0x05070c, 0.018);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 120);
 const camTarget = new THREE.Vector3(0, 3.6, 0);
 const CAM_RADIUS = 22;
+const reduceMotion = window.matchMedia
+  ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  : false;
 
 const ambient = new THREE.AmbientLight(0x2a3b50, 1.15);
 scene.add(ambient);
@@ -1099,14 +1137,16 @@ function updateCamera(dt) {
   smoothNY += (pointerNY - smoothNY) * (1 - Math.exp(-2.2 * dt));
 
   // A portrait phone has a much narrower horizontal view; pulling the camera
-  // back keeps the chamber whole instead of cropping its side walls.
+  // back keeps the chamber whole instead of cropping its side walls. 1.15/aspect
+  // asks for 2.49 at 390×844, so the cap has to clear that.
   const aspect = innerWidth / innerHeight;
-  const viewScale = Math.min(1.7, Math.max(1, 1.15 / aspect));
+  const viewScale = Math.min(2.6, Math.max(1, 1.15 / aspect));
   const radius = CAM_RADIUS * viewScale;
-  const yaw = 0.64 + Math.sin(elapsed * 0.06) * 0.045 + smoothNX * 0.045;
+  const driftYaw = reduceMotion ? 0 : Math.sin(elapsed * 0.06) * 0.045;
+  const driftHeight = reduceMotion ? 0 : Math.sin(elapsed * 0.09) * 0.15;
+  const yaw = 0.64 + driftYaw + smoothNX * 0.045;
   const height =
-    camTarget.y +
-    (6.8 + Math.sin(elapsed * 0.09) * 0.15 - smoothNY * 0.35) * viewScale;
+    camTarget.y + (6.8 + driftHeight - smoothNY * 0.35) * viewScale;
   camera.position.set(Math.sin(yaw) * radius, height, Math.cos(yaw) * radius);
   camera.lookAt(camTarget);
 }
@@ -1248,6 +1288,8 @@ function updateTrajectory() {
   }
 
   const dt = 0.035;
+  const airDrag = 1 - 0.02 * dt;
+  const radius = drag.r;
   let x = drag.start.x;
   let y = drag.start.y;
   let z = drag.start.z;
@@ -1262,14 +1304,19 @@ function updateTrajectory() {
     trajectoryPositions[i * 3 + 2] = z;
     count++;
 
+    // Match the real step: gravity, drag, then move. Stop where the ball's
+    // surface would touch a wall, not where its centre would.
     vy -= world.gravity * dt;
+    vx *= airDrag;
+    vy *= airDrag;
+    vz *= airDrag;
     x += vx * dt;
     y += vy * dt;
     z += vz * dt;
     if (
-      y < 0 || y > BOX.hy ||
-      x < -BOX.hx || x > BOX.hx ||
-      z < -BOX.hz || z > BOX.hz
+      y < radius || y > BOX.hy - radius ||
+      x < -BOX.hx + radius || x > BOX.hx - radius ||
+      z < -BOX.hz + radius || z > BOX.hz - radius
     ) break;
   }
 
@@ -1286,6 +1333,10 @@ function updateTrajectory() {
 
 function beginDrag(event) {
   if (event.button !== 0 || drag.active) return;
+  if (world.balls.length >= MAX_BALLS) {
+    flashLimit();
+    return;
+  }
   const hit = hitPlane(event);
   if (!hit) return;
   ensureAudio();
@@ -1323,15 +1374,18 @@ function endDrag(event) {
   const vy = aim ? aim.vy : -0.4;
   const vz = aim ? aim.vz : (Math.random() - 0.5) * 1.4;
 
-  if (spawnBall(world, {
+  const spawned = spawnBall(world, {
     x: drag.start.x,
     y: drag.start.y,
     z: drag.start.z,
     r: drag.r,
     vx, vy, vz,
-  })) {
+  });
+  if (spawned) {
     syncColors();
     syncCountUI();
+  } else {
+    flashLimit();
   }
   finishDrag();
 }
@@ -1381,6 +1435,13 @@ let accumulator = 0;
 let elapsed = 0;
 let hudTimer = 0;
 let hudFrames = 0;
+let limitTimer = 0;
+
+function flashLimit() {
+  countEl.classList.add("limit");
+  clearTimeout(limitTimer);
+  limitTimer = window.setTimeout(() => countEl.classList.remove("limit"), 650);
+}
 
 function syncCountUI() {
   countEl.textContent = world.balls.length;
@@ -1391,7 +1452,6 @@ function syncCountUI() {
 function setPaused(value) {
   paused = value;
   pauseBtn.textContent = paused ? "Play" : "Pause";
-  pauseBtn.setAttribute("aria-pressed", String(paused));
 }
 
 function setBallCount(target) {
@@ -1431,12 +1491,10 @@ ballsInput.addEventListener("input", () => {
 
 pauseBtn.addEventListener("click", () => {
   setPaused(!paused);
-  pauseBtn.blur();
 });
 
 resetBtn.addEventListener("click", () => {
   resetWorld();
-  resetBtn.blur();
 });
 
 soundBtn.addEventListener("click", () => {
@@ -1444,11 +1502,24 @@ soundBtn.addEventListener("click", () => {
   soundBtn.textContent = soundOn ? "Sound on" : "Sound off";
   soundBtn.setAttribute("aria-pressed", String(soundOn));
   ensureAudio();
-  soundBtn.blur();
 });
 
 addEventListener("keydown", (event) => {
-  if (event.target && event.target.tagName === "INPUT") return;
+  // A held key must not retrigger a toggle or reset. Modifier chords belong
+  // to the browser (Ctrl+R, Cmd+R) and to assistive tech.
+  if (event.repeat) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+  const target = event.target;
+  const tag = target && target.tagName;
+  if (tag === "TEXTAREA" || tag === "SELECT") return;
+  if (tag === "INPUT" && target.type !== "range") return;
+
+  // A focused button or link owns Space and Enter. R still resets globally.
+  if ((tag === "BUTTON" || tag === "A") && (event.code === "Space" || event.code === "Enter")) {
+    return;
+  }
+
   if (event.code === "Space") {
     event.preventDefault();
     setPaused(!paused);
@@ -1521,6 +1592,15 @@ if (SELFTEST) {
   const result = runSelfTest();
   window.__selftestResult = result;
   if (!result.pass) console.error("SELFTEST FAIL", result);
+}
+
+// If the slow-boot notice painted before the module finally loaded, clear it
+// and put the controls back.
+const fatalPanel = document.getElementById("fatal");
+if (fatalPanel.style.display === "grid" && !window.__simFailed) {
+  fatalPanel.style.display = "none";
+  document.getElementById("controls").hidden = false;
+  document.getElementById("stats").hidden = false;
 }
 </script>
 </body>

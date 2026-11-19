@@ -119,9 +119,27 @@ try {
     await page.waitForTimeout(150);
     report("ball-count slider changes the count", (await count()) === 12, `${await count()} balls`);
 
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(150);
+    const beforeReset = await page.evaluate(() =>
+      window.__debug.world.balls.map((b) => [b.x, b.y, b.z])
+    );
     await page.locator("#reset").click();
     await page.waitForTimeout(150);
-    report("reset restores the slider count", (await count()) === 12, `${await count()} balls`);
+    const afterReset = await page.evaluate(() => ({
+      count: window.__debug.world.balls.length,
+      positions: window.__debug.world.balls.map((b) => [b.x, b.y, b.z]),
+      stillPaused: document.getElementById("pause").textContent === "Play",
+    }));
+    report(
+      "reset rebuilds the balls",
+      afterReset.count === 12 &&
+        afterReset.stillPaused &&
+        JSON.stringify(beforeReset) !== JSON.stringify(afterReset.positions),
+      `${beforeReset.length} → ${afterReset.count}`
+    );
+    await page.locator("#pause").click();
+    await page.waitForTimeout(150);
 
     await page.evaluate(() => {
       const input = document.getElementById("gravity");
@@ -138,6 +156,28 @@ try {
     });
     await page.waitForTimeout(100);
     report("bounce slider drives the world", (await worldValue("restitution")) === 0.55);
+
+    await page.evaluate(() => document.getElementById("gravity").focus());
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(150);
+    const sliderPause = await page.locator("#pause").textContent();
+    report("Space works with a slider focused", sliderPause === "Play", `button “${sliderPause}”`);
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(150);
+
+    const beforeRepeat = await page.locator("#pause").textContent();
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "Space", key: " ", repeat: true, bubbles: true })
+      );
+    });
+    await page.waitForTimeout(150);
+    const afterRepeat = await page.locator("#pause").textContent();
+    report(
+      "held keys do not retrigger",
+      afterRepeat === beforeRepeat,
+      `“${beforeRepeat}” → “${afterRepeat}”`
+    );
   }
 } catch (error) {
   errors.push("check crashed: " + String(error.message).split("\n")[0]);
