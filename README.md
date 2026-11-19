@@ -51,8 +51,9 @@ The harness opens the page in headless Chromium and runs:
   0→5 s and 5→15 s, net energy dissipation, settling, no residual overlap, and
   that collision events were produced.
 - **Controls**: drag-to-throw increments the count, `Space` freezes and resumes
-  the clock, and the ball-count, reset, gravity and bounce controls reach the
-  world.
+  the clock (including while a slider has focus), held keys do not retrigger,
+  Reset rebuilds the balls, and the ball-count, gravity and bounce controls
+  reach the world.
 
 For a visual pass:
 
@@ -66,7 +67,10 @@ omarchy agent look page index.html --size 390x844 --after 2500
 - The camera pans out on portrait screens (`1.15 / aspect`, capped at 2.6) so
   the side walls stay in frame. The cap clears the 2.49 the formula asks for at
   390×844.
-- The aim arc integrates gravity only; it deliberately ignores collisions.
+- The aim arc applies gravity and air drag and stops at the ball's surface; it
+  deliberately ignores collisions.
+- If the CDN cannot load, an 8 s boot watchdog replaces the page with a network
+  message. WebGL failure and context loss use the same panel.
 - The glass box is a `MeshBasicMaterial` at 0.022 opacity. A physical material
   turned point-light speculars into two bright orbs that read as stray balls.
 - `O(n²)` pair checks are fine at the 260-ball cap. A uniform grid is the next
