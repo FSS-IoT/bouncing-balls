@@ -3,6 +3,8 @@
 A closed glass chamber full of balls: gravity, restitution, wall and ball-ball
 collisions, and a drag-to-throw aim arc. One `index.html`, no build step.
 
+Live: <https://fss-iot.github.io/bouncing-balls/>
+
 Open `index.html` in a browser. three.js 0.170.0 loads from jsDelivr, so the
 first load needs a network connection.
 
